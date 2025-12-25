@@ -1,0 +1,100 @@
+services:
+  # SQL Server Database
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: excel-import-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrongPassword123!
+      - MSSQL_PID=Developer
+    ports:
+      - '1433:1433'
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./sql:/docker-entrypoint-initdb.d
+    networks:
+      - excel-import-network
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P YourStrongPassword123! -Q "SELECT 1" -C || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for BullMQ
+  redis:
+    image: redis:7-alpine
+    container_name: excel-import-redis
+    command: redis-server --appendonly yes
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - excel-import-network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: excel-import-app
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Database config (match your app.config.ts)
+      - DB_SERVER=sqlserver
+      - DB_PORT=1433
+      - DB_USER=sa
+      - DB_PASSWORD=YourStrongPassword123!
+      - DB_DATABASE=ImportDB
+      - DB_ENCRYPT=false
+      - DB_TRUST_SERVER_CERTIFICATE=true
+      - DB_POOL_MIN=2
+      - DB_POOL_MAX=10
+      # Redis config
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # App config
+      - MAX_FILE_SIZE=52428800
+      - BATCH_SIZE=1000
+      - MAX_CONCURRENT_JOBS=5
+      - LOG_LEVEL=info
+      - CORS_ORIGIN=*
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./logs:/app/logs
+      - upload_temp:/tmp/uploads
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - excel-import-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+networks:
+  excel-import-network:
+    driver: bridge
+
+volumes:
+  sqlserver_data:
+    driver: local
+  redis_data:
+    driver: local
+  upload_temp:
+    driver: local
