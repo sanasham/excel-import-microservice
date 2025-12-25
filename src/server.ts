@@ -1,7 +1,7 @@
 import app from './app';
 import { appConfig } from './config/app.config';
 import DatabaseConnection from './config/database.config';
-import logger from './utils/logger.js';
+import logger from './utils/logger';
 import { startWorker, stopWorker } from './workers/import.worker';
 
 /**
